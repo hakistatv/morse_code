@@ -1,139 +1,243 @@
 # morse_code
 
-ESP-IDF firmware for the Waveshare **ESP32-S3-ePaper-1.54** (V1:
-ESP32-S3FH4R2, 4MB Flash / 2MB PSRAM). Stores ten short text messages (up
-to 25 characters each) and plays the selected one in Morse code through
-the speaker &mdash; a keyed sine whose speed, pitch, volume and
-infinite-loop mode are set from the `/audio` web page (defaults 15 wpm /
-600 Hz / 100 % / loop off, persisted in NVS) &mdash; on a **BOOT** button
-press; pressing again while it plays (or loops) **stops** it, a
-**double-press** advances to the next stored message and shows it on the
-e-paper panel, and a **~2s hold** toggles infinite-loop mode (an infinity
-mark in the panel's top-left corner shows when it is on). The ten slots
-are editable from a phone
-over a Wi-Fi access point and persist in NVS (slot 1 defaults to `X`). The web UI has the same
-Home / Settings page layout as `../qr_code_wallet`, the same default AP
-`Hakista` / `hak1sta!`, and the AP SSID/password plus the mDNS device name
-are runtime-configurable too.
-
-Same board and driver style as its sibling projects
-[`../qr_code_wallet`](../qr_code_wallet) and
-[`../photo_album`](../photo_album); the e-paper, BOOT-button, Wi-Fi AP and
-web-form pieces are carried over from `../qr_code_wallet`.
+ESP-IDF firmware for the Waveshare **ESP32-S3-ePaper-1.54** (V1: ESP32-S3FH4R2,
+4MB Flash / 2MB PSRAM). Stores up to ten short text messages in flash and plays
+the selected one in Morse code through the speaker -- an on/off-keyed sine whose
+speed, pitch, volume and infinite-loop mode are set from a web form over the
+board's own Wi-Fi access point, with the current message shown on the onboard
+e-paper panel.
 
 ## Hardware
 
 - Board: Waveshare ESP32-S3-ePaper-1.54, V1
-- Wiki: http://www.waveshare.com/wiki/ESP32-S3-ePaper-1.54
 - Docs: https://docs.waveshare.com/ESP32-S3-ePaper-1.54
 
-| Function | Pin(s) |
-|---|---|
-| E-paper (SPI2) | DC=GPIO10, CS=GPIO11, SCK=GPIO12, MOSI=GPIO13, RST=GPIO9, BUSY=GPIO8, PWR=GPIO6 (**active-LOW**) |
-| BOOT button (press = play/stop, double-press = next message, ~2s hold = toggle infinite loop) | GPIO0 |
-| Audio codec ES8311 control (I2C0) | SDA=GPIO47, SCL=GPIO48, address 0x30 |
-| Audio I2S | MCLK=GPIO14, BCLK=GPIO15, WS=GPIO38, DOUT=GPIO45 |
-| Audio codec power enable | GPIO42 (**active-LOW**, same as the e-paper PWR pin) |
-| Speaker amplifier enable | GPIO46 (active-high; driven by the ES8311 driver) |
+| Function                                                                        | Pin(s) |
+|--------------------------------------------------------------------------------- |--------|
+| E-paper (SPI2)                                                                  | DC=GPIO10, CS=GPIO11, SCK=GPIO12, MOSI=GPIO13, RST=GPIO9, BUSY=GPIO8, PWR=GPIO6 (**active-LOW**) |
+| BOOT button (press = play/stop, double-press = next message, ~2s hold = toggle loop) | GPIO0 |
+| Audio codec ES8311 control (I2C0)                                               | SDA=GPIO47, SCL=GPIO48, address 0x30 |
+| Audio I2S                                                                       | MCLK=GPIO14, BCLK=GPIO15, WS=GPIO38, DOUT=GPIO45 |
+| Audio codec power enable                                                        | GPIO42 (**active-LOW**, same as the e-paper PWR pin) |
+| Speaker amplifier enable                                                        | GPIO46 (active-high; driven by the ES8311 codec driver) |
 
-There is **no onboard speaker** — audio comes out the MX1.25 2-pin speaker
-header and needs an external speaker plugged in.
+There is **no onboard speaker** -- audio comes out the MX1.25 2-pin speaker
+header, so an external speaker has to be plugged in to hear anything.
 
-The audio pin map, PA-enable pin, and "use MCLK" setting come from
-Waveshare's own ESP-IDF audio example for this board
-(`02_Example/ESP-IDF/V1/08_Audio_Test`, board id `S3_ePaper_1_54`). The
-e-paper pin map matches `components/epd_1in54/epd.h`. See
-[`../photo_album/docs/waveshare-esp32-s3-epaper-1.54-reference.md`](../photo_album/docs/waveshare-esp32-s3-epaper-1.54-reference.md)
-for the board's full peripheral list.
+See [`components/epd_1in54/epd.h`](components/epd_1in54/epd.h) for the e-paper
+pin map as implemented, and
+[`components/morse_player/morse_player.c`](components/morse_player/morse_player.c)
+for the audio pin map and ES8311 setup (both taken from Waveshare's own ESP-IDF
+example for this board).
 
-## Behaviour
+## Features
 
-1. On boot: init NVS, load the ten message slots (slot 1 = `X` on first
-   boot), the selected slot, and the saved Wi-Fi/hostname/audio settings,
-   then draw the selected slot's message on the e-paper (3×-scaled bold
-   5×7 font, word-wrapped, centred on both axes; a small infinity mark in
-   the top-left corner if infinite-loop mode is on), one full refresh.
-2. Bring up the ES8311 codec + I2S TX path for playback.
-3. Start a Wi-Fi access point, mDNS, and an HTTP server (see below).
-4. Watch the BOOT button:
-   - **Press** re-reads the selected slot from NVS and plays it as an
-     on/off-keyed sine at the configured speed / pitch / volume (default
-     15 wpm / 600 Hz / 100 %), then goes quiet. If **Infinite loop** is
-     set in `/audio`, the message repeats (with a word gap between reps)
-     until the next press.
-   - **Press while it is playing (or looping)** stops playback &mdash; it
-     ends at the next element boundary (within ~a second), the PA drops
-     cleanly, and nothing restarts.
-   - **Double-press** stops any playback, then advances the selection to
-     the next non-empty slot (wrapping), persists it, and redraws the
-     panel &mdash; no new playback.
-   - **~2s hold** toggles **Infinite loop** on/off, persists it to NVS
-     (same setting as the `/audio` checkbox), and redraws the panel so the
-     top-left infinity mark appears or clears. Playback already running is
-     left alone; the new mode applies on the next press.
-   - A lone press is classified ~350 ms after it is released (that wait is
-     how a double-press is ruled out), so a stop takes effect ~350 ms +
-     one element after the press. Synthesis runs on its own task, so the
-     button stays responsive during playback.
+- Boots, draws the selected message on the e-paper, and starts a Wi-Fi access
+  point (SoftAP) -- connect directly to the board, no router needed
+- Starts an HTTP server: a Home page at `/` linking to Messages (`/messages`),
+  Audio (`/audio`), and Settings (`/settings`)
+- Messages page: ten persistent text slots, up to 25 characters each (letters,
+  digits, spaces), each an inline field with a Save and a Clear button. Slot 1
+  defaults to `X`. Saving the selected slot -- or the first slot filled when
+  none was selected -- redraws the panel. Stored in NVS (`message_store.c`,
+  namespace `morse`), survives reboot/power loss
+- Draws the message with a 3x-scaled bold 5x7 bitmap font, word-wrapped and
+  centred on both axes (`text_display.c`); a small infinity mark is added in the
+  top-left corner while infinite-loop mode is on
+- Plays the selected slot in Morse code through the ES8311 codec on a **BOOT**
+  press: an on/off-keyed sine at the configured speed, pitch and volume,
+  synthesized and streamed one element at a time on its own task
+  (`morse_player.c`)
+- **BOOT button** (`boot_button.c` -- polled and debounced, no ISR):
+  - **single press** -- play the selected message, or stop it if it is already
+    playing
+  - **double press** -- advance the selection to the next non-empty slot
+    (wrapping), persist it, and redraw the panel; no playback
+  - **~2s hold** -- toggle infinite-loop mode. When it is on, a press repeats
+    the message (a word gap between reps) until the next press, and the panel
+    shows the corner infinity mark. Playback already running is left alone; the
+    new mode applies on the next press
+- Audio page: set Morse speed (8-40 wpm), tone frequency (300-1200 Hz), output
+  volume (0-100), and the infinite-loop flag from the browser -- no reflash
+  needed. Save persists to NVS (`audio_settings.c`, namespace `audio_cfg`);
+  Save & test also plays `PARIS` once at the new settings so you can tune by ear
+- Settings page: change the Wi-Fi SSID, password, and device (mDNS) name from
+  the browser -- no reflash needed. Saving restarts the board so the new
+  settings take effect
+- Advertises itself over mDNS so the AP can be reached by hostname instead of IP
 
-### Web pages
+## Morse timing (PARIS standard)
 
-- Connect to the access point **`Hakista`** (WPA2, password `hak1sta!`).
-- Browse to **`http://192.168.4.1/`** or **`http://hakista.local/`**.
+One unit is `1200 / wpm` milliseconds (80 ms at the default 15 wpm). A dit is 1
+unit, a dah is 3; the gap between elements within a letter is 1 unit, between
+letters 3, between words 7. Each keyed element gets a 4 ms raised-cosine edge
+ramp so it doesn't click on and off. At 15 wpm that works out to roughly
+0.9-1.0 s per character, so a full 25-character message runs about 22-25 s
+(faster or slower as the speed is changed).
 
-| Page | What |
-|---|---|
-| `/` | Home — links to Messages, Audio and Settings |
-| `/messages` | The ten slots, each an inline text field with **Save** / **Clear**; the selected slot is marked *playing now*. Saving the selected slot (or the first slot filled when none was selected) redraws the panel. Letters, digits, spaces; up to 25 chars. Save an empty field to clear a slot. |
-| `/audio` | Speed (8–40 wpm), tone frequency (300–1200 Hz), volume (0–100), and an **Infinite loop** checkbox (off by default — when on, a BOOT press loops the message until the next press; also toggleable by a ~2s BOOT hold, and shown as a top-left mark on the panel). **Save** persists to NVS; **Save & test** also plays `PARIS` once at the new settings so you can tune by ear. |
-| `/settings` | Wi-Fi network name, Wi-Fi password (blank = keep current), and device name (`http://NAME.local/`). Save writes them to NVS and **restarts** the device to apply them. |
+Audio is synthesized and streamed one Morse element at a time, so playback RAM
+is a fixed ~35 KB buffer regardless of message length -- nothing holds rendered
+PCM.
 
-Message slots live in NVS namespace `morse` (keys `msg1`..`msg10`, plus
-`sel` for the selected slot); the audio settings in namespace `audio_cfg`
-(`wpm` / `tone_hz` / `vol` / `loop`). First-boot defaults for the AP SSID/password
-and the mDNS hostname are compile-time constants in
-[`components/device_settings/device_config.h`](components/device_settings/device_config.h)
-(once saved from `/settings` they live in NVS namespace `dev_cfg`); the
-audio defaults are in
-[`components/audio_settings/audio_config.h`](components/audio_settings/audio_config.h).
+## Configuring
 
-### Timing (PARIS standard)
+### Wi-Fi and device name
 
-One unit = `1200 / wpm` ms (**80 ms** at the default 15 wpm). dit = 1
-unit, dah = 3, gap between elements = 1, between letters = 3, between
-words = 7. Each keyed element gets a 4 ms raised-cosine edge ramp so it
-doesn't click. At 15 wpm that's roughly **0.9–1.0 s per character**, so a
-full 25-char message runs ~22–25 s (faster/slower as WPM is changed).
+There are two ways to set the Wi-Fi SSID/password and device (mDNS) name:
 
-Audio is synthesized and streamed one Morse element at a time, so
-playback RAM is a fixed ~35 KB element buffer no matter how long the
-message is — nothing stores rendered PCM.
+1. **Before you build** -- edit the defaults in
+   [`components/device_settings/device_config.h`](components/device_settings/device_config.h):
 
-## Layout
+   ```c
+   #define WIFI_AP_SSID     "Hakista"
+   #define WIFI_AP_PASS     "hak1sta!"
+   #define WIFI_AP_CHANNEL  1
+   #define WIFI_AP_MAX_CONN 4
 
-| Path | What |
-|---|---|
-| `main/morse_code.c` | Wiring: load slots + settings, draw the selected one, init audio + Wi-Fi + mDNS + web, single/double/long BOOT-press callbacks |
-| `components/message_store/` | NVS-backed store for the 10 message slots + selected slot (namespace `morse`, keys `msg1`..`msg10`, `sel`); migrates the pre-slots `message` key into slot 1 |
-| `components/device_settings/` | NVS-backed Wi-Fi SSID/password + mDNS hostname (namespace `dev_cfg`) — from `../qr_code_wallet` |
-| `components/audio_settings/` | NVS-backed WPM / tone frequency / volume / infinite-loop flag (namespace `audio_cfg`); same shape as `device_settings` |
-| `components/wifi_ap/` | SoftAP bring-up from `current_ssid`/`current_pass` — from `../qr_code_wallet` |
-| `components/mdns_service/` | Advertises `http://<hostname>.local/` — from `../qr_code_wallet` (pulls `espressif/mdns`) |
-| `components/web_server/` | Home / Messages / Audio / Settings pages — adapted from `../qr_code_wallet`'s, shared `style.css` |
-| `components/boot_button/` | Polls GPIO0, debounces, and classifies each press as single, double, or a ~2s long hold |
-| `components/text_display/` | Renders the message string with the `font5x7` bitmap font (3× scale, faux-bold), word-wrapped and centred on both axes; optional top-left infinity mark for infinite-loop mode |
-| `components/morse_player/` | ES8311 + I2S TX bring-up and the chunked Morse tone synthesizer; plays on its own task with a non-blocking `play()` + `stop()`, runtime `set_volume()` |
-| `components/epd_1in54/` | 1.54" 200×200 e-paper driver — unchanged from `../qr_code_wallet` |
+   #define MDNS_HOSTNAME    "hakista"
+   ```
 
-Custom `partitions.csv` grows the app partition to fill 4 MB flash (the
-Wi-Fi + HTTP + mbedtls stack outgrows the default 1 MB).
+   Edit that file, then build/flash as usual -- no menuconfig step needed.
 
-## Build & flash
+2. **After flashing, from the browser** -- open `/settings` on the device (see
+   below) and change the SSID, password, and device name there. These are saved
+   to NVS flash and take priority over `device_config.h` from then on (survives
+   reflashing the app, but not `idf.py erase-flash`). Saving restarts the board
+   immediately. Leave the password field blank to keep the current password
+   unchanged.
 
-Requires ESP-IDF **v5.5+** (developed on v6.0.2).
+### Audio
+
+The first-boot Morse speed, tone pitch, volume and infinite-loop default are
+compile-time constants in
+[`components/audio_settings/audio_config.h`](components/audio_settings/audio_config.h):
+
+```c
+#define AUDIO_DEFAULT_WPM      15
+#define AUDIO_DEFAULT_TONE_HZ  600
+#define AUDIO_DEFAULT_VOLUME   100
+#define AUDIO_DEFAULT_LOOP     0
+```
+
+After the first boot these are runtime-editable from the `/audio` page and
+stored in NVS (namespace `audio_cfg`), taking priority from then on (same
+survival rules as the Wi-Fi settings above). The accepted ranges the web form
+validates against are in `audio_settings.h`.
+
+Note: message text and all settings are stored **unencrypted** in NVS -- fine
+for a local device you control, but don't expose this AP's endpoints beyond
+that.
+
+## Building & flashing
+
+This project uses ESP-IDF v6.0.2. Activate the toolchain, then use `idf.py` as
+normal:
 
 ```sh
-idf.py set-target esp32s3
+source ~/.espressif/tools/activate_idf_v6.0.2.sh
+idf.py set-target esp32s3   # first time only
 idf.py build
-idf.py -p /dev/tty.usbmodemXXXX flash monitor
+idf.py -p /dev/cu.usbmodem101 flash monitor
 ```
+
+(To exit the serial monitor, press `Ctrl-]`.)
+
+### Notes for this board
+
+- Flash over UART, not JTAG (`idf.flashType` in `.vscode/settings.json` if using
+  the VS Code ESP-IDF extension) -- this board's native USB-JTAG interface can
+  leave the chip stuck in bootloader/download mode with the JTAG flash path.
+- If a flash/monitor gets stuck at "waiting for download", check for (and kill)
+  a leftover `openocd` process still holding the JTAG interface.
+- `sdkconfig.defaults` sets `CONFIG_ESPTOOLPY_NO_STUB=y`, which this board needs
+  for reliable flashing.
+
+## Connecting to the device
+
+1. Connect your phone/laptop's Wi-Fi to the SSID set in
+   `components/device_settings/device_config.h` (default `Hakista`), using the
+   configured password (default `hak1sta!`).
+2. Browse to either:
+   - `http://192.168.4.1/` (always works -- the SoftAP's fixed gateway IP), or
+   - `http://<MDNS_HOSTNAME>.local/` (default `http://hakista.local/` -- works
+     out of the box on macOS/iOS/Linux; Windows needs Bonjour installed)
+
+You should see the Home page, with links to Messages, Audio and Settings. On
+Messages, type into a slot and Save -- the panel should redraw within a couple
+seconds, as a quick end-to-end check that Wi-Fi + web server + display + flash
+storage all agree with each other. Press **BOOT** to hear that slot in Morse;
+hold **BOOT** for ~2s and press again to hear it loop.
+
+## Project layout
+
+Each piece besides the app entry point lives in its own ESP-IDF component under
+`components/`, with its own `CMakeLists.txt` declaring exactly what it requires:
+
+```
+main/
+  morse_code.c              -- app_main, single/double/long BOOT-press callbacks
+  idf_component.yml         -- managed dependency (esp_codec_dev)
+  CMakeLists.txt
+components/
+  message_store/             -- 10 text slots + selected-slot index (NVS namespace "morse")
+    message_store.c/.h
+    CMakeLists.txt
+  audio_settings/            -- runtime Morse speed / tone / volume / loop flag (NVS namespace "audio_cfg")
+    audio_settings.c/.h
+    audio_config.h          -- edit first-boot audio defaults here before building
+    CMakeLists.txt
+  device_settings/           -- runtime SSID/password/hostname storage (NVS namespace "dev_cfg")
+    device_settings.c/.h
+    device_config.h         -- edit Wi-Fi/mDNS defaults here before building
+    CMakeLists.txt
+  mdns_service/              -- mDNS advertisement (<hostname>.local)
+    mdns_service.c/.h
+    idf_component.yml        -- managed dependency (espressif/mdns)
+    CMakeLists.txt
+  wifi_ap/                   -- Wi-Fi access-point bring-up
+    wifi_ap.c/.h
+    CMakeLists.txt
+  epd_1in54/                 -- SSD1681 e-paper panel driver (SPI + GPIO control)
+    epd.c/.h
+    CMakeLists.txt
+  text_display/              -- 5x7 bitmap-font renderer: word-wrap, both-axis centering, optional loop mark
+    text_display.c/.h
+    font5x7.h
+    CMakeLists.txt
+  morse_player/              -- ES8311 + I2S bring-up and the streaming Morse tone synthesizer
+    morse_player.c/.h
+    CMakeLists.txt
+  boot_button/               -- BOOT button (GPIO0) polling + debounce, single/double/long classify
+    boot_button.c/.h
+    CMakeLists.txt
+  web_server/                -- HTTP server: Home, Messages (GET+POST+clear),
+    web_server.c/.h             Audio (GET+POST), Settings (GET+POST)
+    pages/                   -- every page's HTML lives here (embedded into the
+                                  binary at build time, see CMakeLists.txt):
+                                    home.html, messages.html, audio.html,
+                                    settings.html, restart.html, style.css
+    CMakeLists.txt
+partitions.csv               -- custom table: standard single-app layout with the app
+                                  partition grown to fill 4MB flash
+sdkconfig.defaults           -- 4MB flash, custom partition table, ES8311 via i2c_master
+```
+
+**Partition table:** this project uses a custom `partitions.csv` -- the standard
+single-app layout, but with the `factory` app partition grown to fill the
+board's 4MB flash, because the Wi-Fi AP + HTTP server + mbedtls stack pushes the
+image well past the default 1MB. The 24KB `nvs` partition is unchanged, so saved
+messages and settings survive a firmware update. If `idf.py build` ever reports
+a stale/wrong partition size after pulling changes, delete `sdkconfig` and
+rebuild so it regenerates from `sdkconfig.defaults` (`sdkconfig` is a local
+cache, not checked in).
+
+## Attribution
+
+This project is shared publicly for anyone to fork, learn from, and build on. If
+you use this code -- in full or in a substantial part, source or compiled
+firmware -- in your own project, please credit **Hakista TV**:
+
+- [github.com/hakistatv](https://github.com/hakistatv)
+- [youtube.com/HakistaTV](https://youtube.com/HakistaTV)
+
+A link back to this repo in your README or project description is enough.
