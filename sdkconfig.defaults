@@ -1,0 +1,14 @@
+# ESP32-S3-ePaper-1.54 V1 hardware: ESP32-S3FH4R2 module, 4MB flash /
+# 2MB Quad PSRAM (integrated).
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# esp_codec_dev talks to the ES8311 through the IDF 5.3+ i2c_master
+# driver (morse_player hands it an i2c_master_bus_handle_t), not the
+# legacy i2c driver.
+# CONFIG_CODEC_I2C_BACKWARD_COMPATIBLE is not set
+
+# Grow the app partition to fill 4MB flash -- the Wi-Fi/HTTP stack pushes
+# the image past the default 1MB single-app table.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

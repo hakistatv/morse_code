@@ -1,0 +1,8 @@
+# Name,   Type, SubType, Offset,   Size,    Flags
+# Standard single-app layout, but the app partition is grown to fill the
+# board's 4MB flash -- the Wi-Fi AP + HTTP server + mbedtls stack pushes
+# the image well past the default 1MB. nvs (0x9000, 24KB) is unchanged, so
+# the saved message survives a firmware update.
+nvs,      data, nvs,     0x9000,   0x6000,
+phy_init, data, phy,     0xf000,   0x1000,
+factory,  app,  factory, 0x10000,  0x3F0000,

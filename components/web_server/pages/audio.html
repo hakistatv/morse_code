@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/style.css">
+<title>Morse Code</title>
+</head>
+<body>
+<h1>Audio</h1>
+%s
+<form method="POST" action="/audio">
+  <label>Speed (words per minute):<br>
+    <input type="number" name="wpm" min="8" max="40" step="1" value="%d" required>
+  </label>
+
+  <label>Tone frequency (Hz):<br>
+    <input type="number" name="tone" min="300" max="1200" step="10" value="%d" required>
+  </label>
+
+  <label>Volume (0&ndash;100):<br>
+    <input type="number" name="volume" min="0" max="100" step="5" value="%d" required>
+  </label>
+
+  <label class="check"><input type="checkbox" name="loop" value="1"%s> Infinite loop &mdash; repeat until the BOOT button is pressed again</label>
+
+  <button type="submit">Save</button>
+  <button type="submit" name="test" value="1">Save &amp; test</button>
+</form>
+<p class="hint">&ldquo;Save &amp; test&rdquo; plays <b>PARIS</b> at the new settings so you can tune by ear.</p>
+<p><a href="/">Back to Home</a></p>
+</body>
+</html>

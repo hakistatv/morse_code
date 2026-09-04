@@ -1,0 +1,146 @@
+/* Shared stylesheet for every device page. Kept as one file (rather than
+ * inlined per-page) so styling only needs to change in one place, and so
+ * repeat page loads pull it from the browser cache instead of re-sending
+ * it. Sized for a phone screen first -- this device's whole UI is meant to
+ * be used from a phone connected to its AP, not a desktop browser.
+ * Adapted from ../qr_code_wallet's style.css. */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+  font-size: 1.2rem;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #fff;
+}
+
+h1 {
+  font-size: 1.8rem;
+  margin: 0 0 1.25rem;
+}
+
+a {
+  color: #1a73e8;
+}
+
+p a {
+  font-size: 1.15rem;
+  display: inline-block;
+  padding: 0.25em 0;
+}
+
+p.hint {
+  font-size: 1rem;
+  color: #555;
+}
+
+form {
+  margin-top: 0.5rem;
+}
+
+label {
+  display: block;
+  font-size: 1.05rem;
+  margin-top: 1.25rem;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="number"] {
+  display: block;
+  width: 100%;
+  font-size: 1.15rem;
+  padding: 0.6em 0.7em;
+  margin-top: 0.4rem;
+  border: 1px solid #999;
+  border-radius: 8px;
+  background: #fff;
+  font-family: inherit;
+}
+
+/* Checkbox row: keep the box inline with its label text. */
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  margin: 0;
+}
+
+button {
+  display: block;
+  width: 100%;
+  font-size: 1.25rem;
+  font-weight: 600;
+  padding: 0.85em 1em;
+  margin-top: 1.5rem;
+  border: none;
+  border-radius: 10px;
+  background: #1a73e8;
+  color: #fff;
+}
+
+button:active {
+  background: #1558b0;
+}
+
+.status {
+  color: #1a7f37;
+  font-weight: 600;
+}
+
+/* --- /messages: one <form class="slot"> per message slot --- */
+
+.slot {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem 0.9rem;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+.slot label {
+  margin-top: 0;
+  font-weight: 600;
+}
+
+.cur {
+  font-weight: 400;
+  color: #1a7f37;
+}
+
+.slot-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}
+
+.slot-actions button {
+  flex: 1;
+  width: auto;
+  margin-top: 0;
+  font-size: 1.05rem;
+  padding: 0.6em 1em;
+}
+
+.slot-actions .clear-btn {
+  flex: 0 0 auto;
+  background: #f5f5f5;
+  color: #b3261e;
+  font-weight: 500;
+  border: 1px solid #ddd;
+}
+
+.slot-actions .clear-btn:active {
+  background: #ebebeb;
+}
