@@ -1,0 +1,83 @@
+name: Build firmware
+
+# Builds the firmware with the same ESP-IDF version used for local
+# development, commits the resulting binaries into docs/firmware/ so
+# they're tracked in git history, then deploys docs/ to GitHub Pages
+# directly from this workflow (rather than relying on the legacy
+# "deploy from a branch" mechanism, which uses GitHub's own
+# auto-generated workflow that we can't control the action versions of).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "main/**"
+      - "components/**"
+      - "CMakeLists.txt"
+      - "partitions.csv"
+      - "sdkconfig.defaults"
+      - "docs/**"
+      - ".github/workflows/build-firmware.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Only one Pages deployment at a time; don't cancel one that's already
+# publishing so we never end up with a half-updated page.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Build with ESP-IDF
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v6.0.2
+          target: esp32s3
+
+      - name: Copy binaries into the web installer
+        run: |
+          mkdir -p docs/firmware
+          cp build/bootloader/bootloader.bin docs/firmware/bootloader.bin
+          cp build/partition_table/partition-table.bin docs/firmware/partition-table.bin
+          cp build/morse_code.bin docs/firmware/morse_code.bin
+
+      - name: Commit updated firmware
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/firmware/bootloader.bin docs/firmware/partition-table.bin docs/firmware/morse_code.bin
+          if git diff --cached --quiet; then
+            echo "Firmware unchanged, nothing to commit."
+          else
+            git commit -m "Auto-build firmware from ${GITHUB_SHA:0:7} [skip ci]"
+            git push
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -128,6 +128,35 @@ Note: message text and all settings are stored **unencrypted** in NVS -- fine
 for a local device you control, but don't expose this AP's endpoints beyond
 that.
 
+## Quick Flash (no build tools needed)
+
+Flash the latest prebuilt firmware straight from your browser using
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) -- built and
+published automatically by GitHub Actions on every push to `main`.
+
+1. Open **https://hakistatv.github.io/morse_code/** in **Chrome or Edge
+   on desktop** (Web Serial isn't supported in Firefox/Safari, or on
+   mobile browsers).
+2. Connect the board via USB **while holding the BOOT button down** -- hold
+   BOOT, plug in the USB cable, then release BOOT after a second or two.
+   This puts the ESP32-S3 into its serial bootloader (download) mode;
+   without it, the board boots straight into whatever firmware is already
+   on it instead of exposing itself for flashing, and the browser either
+   won't see a usable port or the flash will fail partway through.
+3. Click **Connect & Install**, select the board's serial port, then tick
+   **Erase device** if this is the first time flashing this board with this
+   firmware (or it previously ran different firmware -- clears out any
+   leftover settings from before).
+4. Wait for the flash to finish (roughly 30s-1min); the board reboots into
+   the firmware automatically once it's done.
+
+Then connect to the `Hakista` Wi-Fi network (default password
+`hak1sta!`) and browse to `http://192.168.4.1/` -- see
+[Connecting to the device](#connecting-to-the-device) below. There's no
+onboard speaker, so plug one into the board's MX1.25 2-pin speaker header
+to hear the Morse playback. Building from source (next section) is only
+needed if you want to change the code.
+
 ## Building & flashing
 
 This project uses ESP-IDF v6.0.2. Activate the toolchain, then use `idf.py` as
